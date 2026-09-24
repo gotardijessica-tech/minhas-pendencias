@@ -1,0 +1,13 @@
+# Dados e configurações de cada PC — nunca vão para o GitHub.
+config.json
+minhas_pendencias.json
+estado.json
+cache_flow.json
+
+# Arquivos temporários e cópias de segurança do próprio app.
+*.tmp
+*.bak
+
+# Pacote zip antigo (agora o download é pelo GitHub).
+para-compartilhar/
+__pycache__/
