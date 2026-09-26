@@ -45,6 +45,8 @@ uma faixa amarela no topo com o botão **Atualizar agora**.
 - A lista abre sozinha **uma vez por dia**: na primeira vez que você liga o
   PC, entra no Windows, desbloqueia a tela ou volta da suspensão. Nas outras
   vezes do mesmo dia ela não aparece sozinha; é só usar o atalho.
+- O botão **Abrir o Flow**, com o logo, no canto de cima da janela, abre o
+  site do Flow no navegador.
 - As atividades do Flow aparecem como estavam na última publicação do site. O
   app só lê e nunca muda nada no Flow. Para marcar uma atividade como feita,
   use o site do Flow.

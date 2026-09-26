@@ -25,6 +25,22 @@ programar: prefira código simples e legível a abstrações espertas.
   da tela (é o que pega a volta do Modern Standby, que não gera o evento de
   "volta da suspensão") e evento 1 do Power-Troubleshooter (volta do S3 / da
   hibernação). O app filtra para aparecer só na primeira vez do dia.
+- O logo do botão "Abrir o Flow" fica **dentro** do `pendencias.pyw`, em
+  `LOGO_FLOW_28` e `LOGO_FLOW_42` (PNGs em base64, cantos transparentes, sem a
+  sombra do original, reduzidos com bilinear — o bicúbico cria um contorno
+  escuro no traço branco). O de 42 px é usado com zoom ≥ 125%. Embutido de
+  propósito: o atualizador dos PCs antigos só baixa os arquivos da lista
+  *deles*, então um arquivo de imagem novo não chegaria.
+- **Nitidez com zoom do Windows:** `ativar_nitidez()` (chamado no começo de
+  `main()`) avisa o Windows que o app lida com o zoom; sem isso ele estica a
+  janela e tudo fica borrado. Por isso **toda medida em pixels passa por
+  `self.px()`** (tamanho da janela, colunas, altura de linha, padx/pady),
+  escrita pensando em 100% — `px()` multiplica pelo zoom. Fontes em pontos
+  (`("Segoe UI", 10)`) já crescem sozinhas. Medida nova sem `px()` fica
+  pequena em telas com zoom.
+- Os botões de baixo são empacotados **primeiro** (`side="bottom"`) para
+  nunca sumirem quando a janela fica baixa; o tamanho mínimo da janela é
+  medido depois de montar tudo (`winfo_reqheight`).
 - Nunca versionar dados de cada PC: `config.json`, `minhas_pendencias.json`,
   `estado.json`, `cache_flow.json` (estão no `.gitignore`).
 - O app **só lê** o Flow (o `dados.json` do AtasApp ou o site publicado). Nunca

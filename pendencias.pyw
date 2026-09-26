@@ -18,6 +18,7 @@
 #                                     (é o que a Tarefa Agendada chama ao ligar
 #                                     o PC e ao voltar da suspensão)
 
+import ctypes
 import hashlib
 import json
 import os
@@ -29,6 +30,7 @@ import threading
 import tkinter as tk
 import urllib.error
 import urllib.request
+import webbrowser
 from datetime import date, datetime
 from tkinter import messagebox, ttk
 
@@ -55,7 +57,7 @@ PORTA_UNICA = 47831
 
 # Versão deste arquivo. AO MUDAR O APP, SUBA ESTE NÚMERO antes de publicar no
 # GitHub: é comparando com ele que os outros PCs descobrem que há novidade.
-VERSAO = "1.2"
+VERSAO = "1.3"
 
 # De onde os outros PCs baixam as versões novas (repositório público).
 REPO_RAW = "https://raw.githubusercontent.com/gotardijessica-tech/minhas-pendencias/main/"
@@ -463,26 +465,51 @@ class App:
         self.baixando = False
 
         raiz.title("Minhas Pendências")
+        # Zoom da tela: 1.0 = 100%, 1.5 = 150%... As letras (em pontos) já
+        # crescem sozinhas com o zoom; as medidas em PIXELS (tamanho da janela,
+        # colunas, espaçamentos) passam por self.px() para crescer junto.
+        self.escala = raiz.winfo_fpixels("1i") / 96
+
         # Tamanho que cabe na tela: em telas pequenas (ou com zoom do Windows
         # em 150%), 640 de altura passava da borda e escondia os botões.
-        largura = min(760, raiz.winfo_screenwidth() - 40)
-        altura = min(640, raiz.winfo_screenheight() - 90)  # 90 = barra de tarefas + título
+        largura = min(self.px(760), raiz.winfo_screenwidth() - self.px(40))
+        altura = min(self.px(640), raiz.winfo_screenheight() - self.px(90))  # 90 = barra de tarefas + título
         x = (raiz.winfo_screenwidth() - largura) // 2
-        raiz.geometry(f"{largura}x{altura}+{x}+20")
-        raiz.minsize(520, 380)
+        raiz.geometry(f"{largura}x{altura}+{x}+{self.px(20)}")
 
         estilo = ttk.Style()
-        estilo.configure("Treeview", rowheight=26, font=("Segoe UI", 10))
+        estilo.configure("Treeview", rowheight=self.px(26), font=("Segoe UI", 10))
         estilo.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
+        # Um respiro dentro dos botões (sem isso o texto encosta na borda).
+        estilo.configure("TButton", padding=self.px((6, 2)))
 
-        self.titulo = tk.Label(raiz, text="", font=("Segoe UI", 15, "bold"), anchor="w")
-        self.titulo.pack(fill="x", padx=14, pady=(12, 2))
+        # Os botões de baixo são os PRIMEIROS a entrar na janela (presos no
+        # rodapé): quem entra primeiro sempre ganha espaço. Assim, mesmo numa
+        # janela baixa (tela pequena), quem encolhe é a tabela, nunca os botões.
+        botoes = tk.Frame(raiz)
+        botoes.pack(side="bottom", fill="x", padx=self.px(14), pady=self.px((4, 12)))
+        ttk.Button(botoes, text="✔ Feito / desfazer", command=self.alternar_feito).pack(side="left")
+        ttk.Button(botoes, text="✎ Editar", command=self.editar).pack(side="left", padx=self.px((6, 0)))
+        ttk.Button(botoes, text="Excluir", command=self.excluir).pack(side="left", padx=self.px(6))
+        ttk.Button(botoes, text="Limpar concluídas", command=self.limpar_concluidas).pack(side="left")
+
+        # Cabeçalho: saudação à esquerda, botão do Flow à direita. O botão é
+        # colocado primeiro para nunca ser espremido quando a janela estreita.
+        self.cabecalho = tk.Frame(raiz)
+        self.cabecalho.pack(fill="x", padx=self.px(14), pady=self.px((12, 2)))
+        # O logo existe em dois tamanhos, para ficar nítido com e sem zoom.
+        # Guardar a imagem em self: sem isso o Python a apaga e o botão fica vazio.
+        self.logo_flow = tk.PhotoImage(data=LOGO_FLOW_42 if self.escala >= 1.25 else LOGO_FLOW_28)
+        ttk.Button(self.cabecalho, text="Abrir o Flow", image=self.logo_flow, compound="left",
+                   command=self.abrir_flow).pack(side="right")
+        self.titulo = tk.Label(self.cabecalho, text="", font=("Segoe UI", 15, "bold"), anchor="w")
+        self.titulo.pack(side="left", fill="x", expand=True)
         self.resumo = tk.Label(raiz, text="", font=("Segoe UI", 10), fg="#555", anchor="w")
-        self.resumo.pack(fill="x", padx=14, pady=(0, 8))
+        self.resumo.pack(fill="x", padx=self.px(14), pady=self.px((0, 8)))
 
         # ---- Do Flow ----
         cab = tk.Frame(raiz)
-        cab.pack(fill="x", padx=14)
+        cab.pack(fill="x", padx=self.px(14))
         tk.Label(cab, text="Do Flow (atas)", font=("Segoe UI", 12, "bold")).pack(side="left")
         self.botao_atualizar = ttk.Button(cab, text="Atualizar", command=lambda: self.atualizar_flow(pode_abrir_login=True))
         self.botao_atualizar.pack(side="right")
@@ -492,14 +519,15 @@ class App:
             ("prazo", "Prazo", 170), ("prio", "Prioridade", 80),
         ], altura=5)
         self.aviso_flow = tk.Label(raiz, text="", fg="#b00020", anchor="w", justify="left")
-        self.aviso_flow.pack(fill="x", padx=14)
+        self.aviso_flow.pack(fill="x", padx=self.px(14))
         self.rodape_flow = tk.Label(raiz, text="", font=("Segoe UI", 9), fg="#777", anchor="w")
-        self.rodape_flow.pack(fill="x", padx=14, pady=(0, 10))
+        self.rodape_flow.pack(fill="x", padx=self.px(14), pady=self.px((0, 10)))
 
         # ---- Minhas ----
-        tk.Label(raiz, text="Minhas pendências", font=("Segoe UI", 12, "bold"), anchor="w").pack(fill="x", padx=14)
+        tk.Label(raiz, text="Minhas pendências", font=("Segoe UI", 12, "bold"),
+                 anchor="w").pack(fill="x", padx=self.px(14))
         linha = tk.Frame(raiz)
-        linha.pack(fill="x", padx=14, pady=4)
+        linha.pack(fill="x", padx=self.px(14), pady=self.px(4))
         self.campo_texto = ttk.Entry(linha, font=("Segoe UI", 10))
         self.campo_texto.pack(side="left", fill="x", expand=True)
         self.campo_texto.bind("<Return>", lambda e: self.adicionar())
@@ -507,23 +535,14 @@ class App:
         self.campo_prazo = ttk.Entry(linha, width=11, font=("Segoe UI", 10))
         self.campo_prazo.pack(side="left")
         self.campo_prazo.bind("<Return>", lambda e: self.adicionar())
-        ttk.Button(linha, text="Adicionar", command=self.adicionar).pack(side="left", padx=(6, 0))
+        ttk.Button(linha, text="Adicionar", command=self.adicionar).pack(side="left", padx=self.px((6, 0)))
         tk.Label(raiz, text="Prazo é opcional (dd/mm ou dd/mm/aaaa). Enter também adiciona.",
-                 font=("Segoe UI", 9), fg="#777", anchor="w").pack(fill="x", padx=14)
+                 font=("Segoe UI", 9), fg="#777", anchor="w").pack(fill="x", padx=self.px(14))
 
-        # Os botões são presos no RODAPÉ antes de criar a tabela: assim a
-        # tabela só ocupa o espaço que sobra e nunca empurra os botões para
-        # fora da janela.
-        botoes = tk.Frame(raiz)
-        botoes.pack(side="bottom", fill="x", padx=14, pady=(4, 12))
-        ttk.Button(botoes, text="✔ Feito / desfazer", command=self.alternar_feito).pack(side="left")
-        ttk.Button(botoes, text="✎ Editar", command=self.editar).pack(side="left", padx=(6, 0))
-        ttk.Button(botoes, text="Excluir", command=self.excluir).pack(side="left", padx=6)
-        ttk.Button(botoes, text="Limpar concluídas", command=self.limpar_concluidas).pack(side="left")
-
+        # Pede só 3 linhas, mas cresce para ocupar todo o espaço que sobrar.
         self.arvore_minhas = self.nova_tabela(raiz, [
             ("feito", "", 30), ("texto", "Pendência", 480), ("prazo", "Prazo", 120),
-        ], altura=8, expandir=True)
+        ], altura=3, expandir=True)
         self.arvore_minhas.bind("<Double-1>", lambda e: self.alternar_feito())
         self.arvore_minhas.bind("<space>", lambda e: self.alternar_feito())
         self.arvore_minhas.bind("<Delete>", lambda e: self.excluir())
@@ -538,6 +557,12 @@ class App:
         else:
             self.atualizar_flow()
             self.vigiar_arquivo()
+
+        # Tamanho mínimo da janela = o necessário para caber tudo (medido
+        # depois de montar), sem passar do tamanho que cabe na tela.
+        raiz.update_idletasks()
+        raiz.minsize(self.px(520), min(raiz.winfo_reqheight(), altura))
+
         self.campo_texto.focus_set()
         self.faixa_atualizacao = None
         self.servidor = None  # main() preenche; é fechado antes de reabrir
@@ -560,10 +585,11 @@ class App:
         if self.faixa_atualizacao:
             return
         faixa = tk.Frame(self.raiz, bg="#fff4c2")
-        faixa.pack(fill="x", before=self.titulo)
+        faixa.pack(fill="x", before=self.cabecalho)
         tk.Label(faixa, text=f"Há uma versão nova do app ({nova}). Você está com a {VERSAO}.",
-                 bg="#fff4c2", font=("Segoe UI", 10)).pack(side="left", padx=14, pady=6)
-        ttk.Button(faixa, text="Atualizar agora", command=self.atualizar_app).pack(side="right", padx=14, pady=6)
+                 bg="#fff4c2", font=("Segoe UI", 10)).pack(side="left", padx=self.px(14), pady=self.px(6))
+        ttk.Button(faixa, text="Atualizar agora",
+                   command=self.atualizar_app).pack(side="right", padx=self.px(14), pady=self.px(6))
         self.faixa_atualizacao = faixa
 
     def atualizar_app(self):
@@ -581,6 +607,18 @@ class App:
         subprocess.Popen([sys.executable, os.path.join(PASTA, "pendencias.pyw")], cwd=PASTA)
         self.raiz.destroy()
 
+    def px(self, medida):
+        """Converte uma medida pensada para zoom 100% para o zoom desta tela
+        (ex.: 14 vira 21 com zoom de 150%). Aceita um número ou um par
+        (antes, depois), como os de padx/pady."""
+        if isinstance(medida, tuple):
+            return tuple(self.px(m) for m in medida)
+        return round(medida * self.escala)
+
+    def abrir_flow(self):
+        # Abre o site do Flow no navegador padrão (o login é o do navegador).
+        webbrowser.open(self.config["siteFlow"])
+
     def mostrar_titulo(self):
         hoje = date.today()
         nome = self.config["meuNome"] or ler_json(ARQ_CACHE, {}).get("nome", "")
@@ -589,11 +627,11 @@ class App:
 
     def nova_tabela(self, pai, colunas, altura, expandir=False):
         quadro = tk.Frame(pai)
-        quadro.pack(fill="both", expand=expandir, padx=14, pady=4)
+        quadro.pack(fill="both", expand=expandir, padx=self.px(14), pady=self.px(4))
         arvore = ttk.Treeview(quadro, columns=[c[0] for c in colunas], show="headings", height=altura)
         for chave, titulo, largura in colunas:
             arvore.heading(chave, text=titulo, anchor="w")
-            arvore.column(chave, width=largura, anchor="w", stretch=(chave == "texto"))
+            arvore.column(chave, width=self.px(largura), anchor="w", stretch=(chave == "texto"))
         rolagem = ttk.Scrollbar(quadro, orient="vertical", command=arvore.yview)
         arvore.configure(yscrollcommand=rolagem.set)
         arvore.pack(side="left", fill="both", expand=True)
@@ -782,14 +820,15 @@ class App:
         janela.resizable(True, False)
         janela.grab_set()  # enquanto edita, a janela principal fica em espera
 
-        tk.Label(janela, text="Pendência:").grid(row=0, column=0, sticky="w", padx=12, pady=(12, 4))
+        tk.Label(janela, text="Pendência:").grid(row=0, column=0, sticky="w",
+                                                 padx=self.px(12), pady=self.px((12, 4)))
         campo_texto = ttk.Entry(janela, width=60, font=("Segoe UI", 10))
-        campo_texto.grid(row=0, column=1, sticky="we", padx=(0, 12), pady=(12, 4))
+        campo_texto.grid(row=0, column=1, sticky="we", padx=self.px((0, 12)), pady=self.px((12, 4)))
         campo_texto.insert(0, p["texto"])
 
-        tk.Label(janela, text="Prazo:").grid(row=1, column=0, sticky="w", padx=12, pady=4)
+        tk.Label(janela, text="Prazo:").grid(row=1, column=0, sticky="w", padx=self.px(12), pady=self.px(4))
         campo_prazo = ttk.Entry(janela, width=12, font=("Segoe UI", 10))
-        campo_prazo.grid(row=1, column=1, sticky="w", pady=4)
+        campo_prazo.grid(row=1, column=1, sticky="w", pady=self.px(4))
         campo_prazo.insert(0, data_iso_para_br(p.get("prazo")))
         tk.Label(janela, text="dd/mm ou dd/mm/aaaa — deixe em branco para ficar sem prazo.",
                  font=("Segoe UI", 9), fg="#777").grid(row=2, column=1, sticky="w")
@@ -816,9 +855,9 @@ class App:
             self.arvore_minhas.selection_set(p["id"])
 
         botoes = tk.Frame(janela)
-        botoes.grid(row=3, column=0, columnspan=2, sticky="e", padx=12, pady=12)
+        botoes.grid(row=3, column=0, columnspan=2, sticky="e", padx=self.px(12), pady=self.px(12))
         ttk.Button(botoes, text="Salvar", command=salvar).pack(side="left")
-        ttk.Button(botoes, text="Cancelar", command=janela.destroy).pack(side="left", padx=(6, 0))
+        ttk.Button(botoes, text="Cancelar", command=janela.destroy).pack(side="left", padx=self.px((6, 0)))
 
         janela.bind("<Return>", lambda e: salvar())
         janela.bind("<Escape>", lambda e: janela.destroy())
@@ -869,6 +908,58 @@ class App:
         self.verificar_atualizacao()  # a janela pode estar aberta há dias
 
 
+# ================= LOGO DO FLOW =================
+# O logo do botão "Abrir o Flow" em dois tamanhos (28 px para telas sem zoom,
+# 42 px para zoom de 150%), cada um um PNG escrito como texto (base64), para
+# ficar DENTRO deste arquivo — assim ele chega aos outros PCs junto com a
+# atualização, sem arquivo extra. Gerados a partir do logo original:
+# recortado sem a sombra, cantos transparentes, reduzido (bilinear, que não
+# cria contorno escuro em volta do traço branco).
+
+LOGO_FLOW_28 = (
+    "iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAAAAXNSR0IArs4c6QAAAARnQU1B"
+    "AACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAKxSURBVEhLvZZdSBRRGIb3Sr9qdM7U"
+    "zmlNXVv/UEGpoEjQC7uJwCgKVJa03+uIkNAoiuyipKLooh8qKypdS03RyooiLzJJzbRLwTDD"
+    "VUojsBKMt85JDWecdTecDjw3533P9843Z9n5HI7JFREREclV8nKVGnWN/LpGP7hG4/+COOvU"
+    "aIgzeqAz2qYoijqVI5eLhcc6Gd3WGY1xbQHmE53RN65SpYuFuac7E2Fcowmjef6gCV2lStmp"
+    "eI12dGZEdOpUwwtFYJNRtAudUbNDZ+Q3CvZBIw4uf41GwS7opwgcNwuBSYxzSYz7wRByYEpC"
+    "DBrq7qKhrhopCdEmfS5CDszJXoOhwQEMDX5ATtZqkz4XoQUuXojSA/vwfeyrpKR4r9wz+QIQ"
+    "UmCCm+PFs2Z0vm7Fm/ZXeP70EeLd3OQLREiBGzesw7D/Iw6V7Mfh0mIM+weQuz7H5AtE0IGu"
+    "JYtw/mw5+vt6kbV2BbIzV6L/fS/OnTkpNaPfiqAD01M96HnbgXu+W4hZqiLWxVBTfQfdXe1I"
+    "T/GY/FYEHbirqAAjn/zYXVQwvbdnh1fu7SzMN/mtCBgY5VSQuNyF7MxVaGqolR1mpP7tJiMt"
+    "Hu+6O9FYXyNfsfgzEGeMdeYMFHfizduMmxWX0dbagoH+Pox+HsapE2Uz7su1RMHp8uNSE562"
+    "ly24ce0SvHmbLO911kBxR9evXkRPVzvu11Th2JFS5G/JRbInylQg2bMM+VtzUXb0IOprfejp"
+    "6kDFlQuyhtFrGfinUBTSktyI5pEmzYporsozSbM82BSWgXbx/z9PcroyCXYhPsCMHpoFe9BV"
+    "euwQg40c5WYxzCeTQ1SRQ4xuXKUqu8dEkaEoCpOzqa6ExXGVfHZ0OjkI+0TGjOlbpDsjw7Y7"
+    "GT3hGo0aD4YMoy+ilqg53dnv9QufiemiohAdXgAAAABJRU5ErkJggg=="
+)
+
+LOGO_FLOW_42 = (
+    "iVBORw0KGgoAAAANSUhEUgAAACoAAAAqCAYAAADFw8lbAAAAAXNSR0IArs4c6QAAAARnQU1B"
+    "AACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAQ0SURBVFhH7ZlrbBRVFMfnizsHhd07"
+    "7N4pdkspi7FLYgXJVm0hWoyFSCAlKqjFREngiyGIjakIRkOEtCpRSKr4AZCHLYpRY1BpxAjR"
+    "EpBWiCYSLVQX12wflJSufVjazTHn1G7oXLT7GOl88Ca/ZDLncf977r0nmzuaZhlBTbshaxKE"
+    "pAGbTAFfSwNapYAeKaDvP6JHGtBmCmjwCdgsDf2uXE1zWXWNGlOEK9dnwDYpoNU0IG4aE/D6"
+    "AvFh0XqNdLumW/XxkJ4JBaYBR00DBtUE1xsYMgV843XD7FEiqZKmgGPjU8V/AuIkNlFZ2pO0"
+    "3PwrFOfxhiqr1/CezfJCaHhPWp2cgc+Adin0uzU+3Y5aciu8Bao0akGq0VlIoZ+iijp22RMI"
+    "uKxRw1UMjgPiJLRPNTgPW4VmTb4R8wPZDD1b7Zlgq9BFC+7FEw3HGHq22jPBNqFUwZrtW3Ho"
+    "Sj9Ts+01W6tqm9CcLA9+9EFdQuiHB2vRb3oUv3SxTWhx4e0Y/qU5ITTc0oxFoQLFL11sE/rc"
+    "s2txoL8HL11sYwb6/8DKijWKX7rYIjSQa+LRL+u5krV7d2Ld/t38/NWRzzEwVSr+6WCL0MUL"
+    "S7CzoxVjXZ346MNL8LFlZRi7fAk726O2nf6MhU7x3oTbX6/GwYE+bDzZgMEZOTjzlqnY9O1x"
+    "fvfG1ir2scalSsZCC4J5+MOZRhwc6MWql1/klkRUb3mJhX5/+hTelp+nxKVKxkJXPr4ce2Jd"
+    "2Bb9De8vKUq8L51fjO2tEbY9sWKZEpcqGQml3nnwwD4+OIc//RinZXsTtjy/F+s/+4Rt79Xu"
+    "YV9rfCpkJHTunbPwwq/nsL83hmufWqXYn16zmm3UX6nPWu2pkLbQbDkJX1hfwb3z3E8/YmhW"
+    "UPEpnD0Tz/98ln02VD7DMVafZElKKB2OadmTcU7Brbh0cSluqFzHyxm50MJL+87OHdcUQe/2"
+    "7HqbfSLhFo55vnId56BclDPZ/wNjCqVEKx5ZikfqD+H55rPY3dWJV/7s5cnppEcjYXxwyUIl"
+    "boSHyh7A6O9h7gAUQ7HdXRe50l8cPoTly8uSEjum0Jt9E/HAu7t5ItpvbdEInm48wdWh5VxU"
+    "eg/6TbcSNwLZqOlvXF+B79ftxTNNJ7E9GuFclLN23y6ewxpnZUyhxIL75uLmTRtx1ZPlWDIv"
+    "hPkB/zWXeiwoJjjDj/PnFeLqleWcs/SqlvZvJCXUCfwv1G5IaK/1pfOAuEZ3O6rBYQjopooe"
+    "VwwOQwq9UTMN2OL4SzIPVGt0Z+7k5ZcGdPiEXqTRJanp0d906kWu9Ohv5WiaPnx/73ZNp68S"
+    "ztoCEKfz45voCoy6x/e54Y6/xTqgsjBEIr1umDNK5Mgg9VRq2hfjU13+fNMhhb5DqaR10H6Q"
+    "Qi82PfCKKaDJFBBTE9oMzwHfmR54leZO7Mmrxl+dDcwMLGv9WAAAAABJRU5ErkJggg=="
+)
+
+
 # ================= UMA JANELA SÓ =================
 
 def avisar_janela_aberta():
@@ -891,7 +982,23 @@ def escutar_pedidos(app, servidor):
             return
 
 
+# ================= NITIDEZ EM TELAS COM ZOOM =================
+
+def ativar_nitidez():
+    """Avisa o Windows que o app sabe lidar com o zoom da tela (125%, 150%...).
+    Sem isso, o Windows desenha a janela pequena e depois estica a imagem, e
+    tudo fica borrado. Tem que ser chamado ANTES de criar a janela."""
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # 1 = segue o zoom da tela principal
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()  # Windows mais antigos
+        except (AttributeError, OSError):
+            pass
+
+
 def main():
+    ativar_nitidez()
     automatico = "--auto" in sys.argv
     if automatico and ja_abriu_hoje():
         return
