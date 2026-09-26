@@ -13,6 +13,18 @@ programar: prefira código simples e legível a abstrações espertas.
   Sem subir o número, ninguém recebe a mudança.
 - Os arquivos que a atualização baixa estão em `ARQUIVOS_DO_APP`. Se criar ou
   renomear um arquivo que o app precisa, atualize essa lista.
+- **Mudou o `instalar.ps1`?** Nos PCs dos colegas o app roda ele sozinho,
+  escondido, na primeira abertura depois da atualização (compara o SHA-256 do
+  arquivo com `instaladorAplicado` no `estado.json`). Por isso o instalador tem
+  que poder rodar de novo sem perguntar nada e sair com código ≠ 0 quando
+  falhar. No PC da editora (pasta do git) isso não acontece: rode-o à mão.
+- O `instalar.ps1` precisa ficar em **UTF-8 com BOM**: sem o BOM, o PowerShell
+  5.1 lê os acentos errado (o atalho "Minhas Pendências" sai com nome
+  quebrado).
+- Quando o app abre sozinho: gatilhos da Tarefa Agendada = logon, desbloqueio
+  da tela (é o que pega a volta do Modern Standby, que não gera o evento de
+  "volta da suspensão") e evento 1 do Power-Troubleshooter (volta do S3 / da
+  hibernação). O app filtra para aparecer só na primeira vez do dia.
 - Nunca versionar dados de cada PC: `config.json`, `minhas_pendencias.json`,
   `estado.json`, `cache_flow.json` (estão no `.gitignore`).
 - O app **só lê** o Flow (o `dados.json` do AtasApp ou o site publicado). Nunca

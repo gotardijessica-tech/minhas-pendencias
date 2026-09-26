@@ -18,6 +18,7 @@
 #                                     (é o que a Tarefa Agendada chama ao ligar
 #                                     o PC e ao voltar da suspensão)
 
+import hashlib
 import json
 import os
 import shutil
@@ -54,7 +55,7 @@ PORTA_UNICA = 47831
 
 # Versão deste arquivo. AO MUDAR O APP, SUBA ESTE NÚMERO antes de publicar no
 # GitHub: é comparando com ele que os outros PCs descobrem que há novidade.
-VERSAO = "1.1"
+VERSAO = "1.2"
 
 # De onde os outros PCs baixam as versões novas (repositório público).
 REPO_RAW = "https://raw.githubusercontent.com/gotardijessica-tech/minhas-pendencias/main/"
@@ -99,14 +100,30 @@ def carregar_config():
     return config
 
 
+# ================= ESTADO INTERNO (estado.json) =================
+# O que o app precisa lembrar entre uma abertura e outra:
+#   ultimoDia          → último dia em que a lista apareceu sozinha
+#   instaladorAplicado → "impressão digital" do instalar.ps1 que já rodou
+
+def ler_estado():
+    return ler_json(ARQ_ESTADO, {})
+
+
+def gravar_estado(chave, valor):
+    # Muda só uma chave e mantém as outras.
+    estado = ler_estado()
+    estado[chave] = valor
+    gravar_json(ARQ_ESTADO, estado)
+
+
 # ================= "PRIMEIRA VEZ NO DIA" =================
 
 def ja_abriu_hoje():
-    return ler_json(ARQ_ESTADO, {}).get("ultimoDia") == date.today().isoformat()
+    return ler_estado().get("ultimoDia") == date.today().isoformat()
 
 
 def marcar_aberto_hoje():
-    gravar_json(ARQ_ESTADO, {"ultimoDia": date.today().isoformat()})
+    gravar_estado("ultimoDia", date.today().isoformat())
 
 
 # ================= FONTE "ARQUIVO" =================
@@ -328,6 +345,32 @@ def instalar_versao_nova():
         os.replace(destino + ".tmp", destino)
 
 
+def aplicar_instalador_se_mudou():
+    """No PC dos colegas: se o instalar.ps1 mudou (veio numa atualização), roda
+    ele de novo, escondido, para a tarefa diária e os atalhos ficarem iguais
+    aos da versão nova. Na pasta do git não roda: lá a editora roda o
+    instalador quando quiser."""
+    if eh_pasta_do_git():
+        return
+    instalador = os.path.join(PASTA, "instalar.ps1")
+    try:
+        with open(instalador, "rb") as f:
+            impressao = hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return
+    if ler_estado().get("instaladorAplicado") == impressao:
+        return  # esta versão do instalador já rodou
+    powershell = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                              "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    try:
+        r = subprocess.run([powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", instalador],
+                           capture_output=True, timeout=600, creationflags=subprocess.CREATE_NO_WINDOW)
+    except (OSError, subprocess.TimeoutExpired):
+        return  # tenta de novo na próxima vez que o app abrir
+    if r.returncode == 0:
+        gravar_estado("instaladorAplicado", impressao)
+
+
 # ================= PENDÊNCIAS DO FLOW =================
 
 def proxima_reuniao(reunioes, projeto_id, hoje_iso):
@@ -499,6 +542,8 @@ class App:
         self.faixa_atualizacao = None
         self.servidor = None  # main() preenche; é fechado antes de reabrir
         self.verificar_atualizacao()
+        # Se uma atualização trouxe um instalar.ps1 novo, aplica (escondido).
+        threading.Thread(target=aplicar_instalador_se_mudou, daemon=True).start()
 
     # ---- Atualização ----
     def verificar_atualizacao(self):
