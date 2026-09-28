@@ -28,15 +28,19 @@ uma faixa amarela no topo com o botão **Atualizar agora**.
 
 1. Nesta página, clique em **Code → Download ZIP** e descompacte em
    `Documentos\Pendencias`.
-2. Abra o PowerShell nessa pasta e rode:
+2. Dentro da pasta, dê **duplo clique em `instalar.bat`**. Se o Windows
+   avisar "O Windows protegeu o computador", clique em **Mais informações** e
+   depois em **Executar assim mesmo** — isso aparece em qualquer programa
+   baixado da internet, é normal.
 
-   ```
-   powershell -ExecutionPolicy Bypass -File .\instalar.ps1
-   ```
+   Uma janela preta abre e faz tudo sozinha: instala o `cloudflared`
+   (programa oficial da Cloudflare que faz o login no Flow), cria a tarefa
+   que abre a lista todo dia e coloca o atalho **Minhas Pendências** na Área
+   de Trabalho e no Menu Iniciar. Aperte uma tecla para fechá-la quando
+   terminar.
 
-   Ele instala o `cloudflared` (programa oficial da Cloudflare que faz o login
-   no Flow), cria a tarefa que abre a lista todo dia e coloca o atalho
-   **Minhas Pendências** na Área de Trabalho e no Menu Iniciar.
+   (Se preferir, dá para rodar pelo PowerShell também:
+   `powershell -ExecutionPolicy Bypass -File .\instalar.ps1`)
 3. Abra o atalho. Na primeira vez o navegador abre para você entrar no Flow com
    o seu e-mail. Depois disso, o app só pede o login de novo quando ele vence.
 
@@ -57,8 +61,6 @@ uma faixa amarela no topo com o botão **Atualizar agora**.
   exatamente como aparece no Flow em `"meuNome"`.
 - Se uma atualização der problema, a versão anterior fica guardada como
   `pendencias.pyw.bak`.
-- Para desinstalar (seus arquivos continuam na pasta):
-
-  ```
-  powershell -ExecutionPolicy Bypass -File .\instalar.ps1 -Remover
-  ```
+- Para desinstalar (seus arquivos continuam na pasta): duplo clique em
+  `desinstalar.bat`, ou
+  `powershell -ExecutionPolicy Bypass -File .\instalar.ps1 -Remover`.

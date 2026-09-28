@@ -21,6 +21,17 @@ programar: prefira código simples e legível a abstrações espertas.
 - O `instalar.ps1` precisa ficar em **UTF-8 com BOM**: sem o BOM, o PowerShell
   5.1 lê os acentos errado (o atalho "Minhas Pendências" sai com nome
   quebrado).
+- `instalar.bat` / `desinstalar.bat`: duplo-clique em vez de abrir o
+  PowerShell à mão (mais simples para quem instala do zero). Só chamam
+  `powershell -ExecutionPolicy Bypass -File "%~dp0instalar.ps1"` (o segundo
+  com `-Remover`) e dão `pause` no fim para a janela não sumir sozinha.
+  `%~dp0` resolve o caminho da PASTA DO .bat, então funciona de qualquer
+  lugar — não precisam de `cd`. Escritos em **ASCII puro, sem acento e sem
+  BOM**: de propósito — `.bat` usa a code page do console (não UTF-8) e um
+  BOM no início pode atrapalhar o `@echo off`; a mensagem em si não tem
+  acento, então não há por que arriscar. Mantidos fora de `ARQUIVOS_DO_APP`
+  porque nada os chama depois da primeira instalação — só servem para quem
+  ainda vai instalar.
 - Quando o app abre sozinho: gatilhos da Tarefa Agendada = logon, desbloqueio
   da tela (é o que pega a volta do Modern Standby, que não gera o evento de
   "volta da suspensão") e evento 1 do Power-Troubleshooter (volta do S3 / da
